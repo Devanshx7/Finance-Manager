@@ -249,6 +249,11 @@ export default function Expenses({ config, expenses, updateExpenses, history }) 
                   <div style={{ fontSize: 12, fontWeight: 700, color: T.red, fontFamily: "'JetBrains Mono'" }}>
                     {e.currency === "USD" ? fmt(e.amount) : fmt(e.amount, "INR")}
                   </div>
+                  {e.currency === "INR" && (
+                    <div style={{ fontSize: 10, color: T.textMut, fontFamily: "'JetBrains Mono'" }}>
+                      ~{fmt(toUSD(e.amount, config.exchangeRate))}
+                    </div>
+                  )}
                 </div>
                 {isCurrentMonth && (
                   <button onClick={() => updateExpenses((p) => p.filter((x) => x.id !== e.id))} style={{ background: T.red + "12", border: `1px solid ${T.red}22`, cursor: "pointer", color: T.red, padding: 4, borderRadius: 6, display: "flex" }}>

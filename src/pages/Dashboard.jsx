@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { DollarSign, ArrowDownRight, PiggyBank, Users, Bell, RefreshCw, Check, ChevronRight, AlertCircle, AlertTriangle, Archive, TrendingUp } from "lucide-react";
+import { DollarSign, ArrowDownRight, PiggyBank, Users, Bell, RefreshCw, Check, ChevronRight, AlertCircle, AlertTriangle, Archive } from "lucide-react";
 import { T, PIE_COLORS, toINR, toUSD, fmt, MONTH_NAMES } from "../config/theme";
 import { GC, Metric, Ctr, Modal, Btn } from "../components/ui";
 import { ThreeDonut, ThreeScene, ArcReactor } from "../components/Charts";
@@ -69,24 +69,26 @@ export default function Dashboard({ config, expenses, updateExpenses, payments, 
   const sipUSD = (config.sips || []).reduce((s, x) => s + toUSD(x.amountINR, rate), 0);
   const loanUSD = config.studentLoan ? toUSD(config.studentLoan.amountINR, rate) : 0;
   const subsT = (config.subscriptions || []).reduce((s, x) => s + x.amount, 0);
-  const plannedFixed = config.rent + sipUSD + loanUSD + subsT;
-  const plannedFree = Math.max(0, config.salary - plannedFixed);
+  const ccEstimate = config.creditCardEstimate || 0;
+  const plannedFixed = config.rent + sipUSD + loanUSD + subsT + ccEstimate;
+  const plannedLeft = Math.max(0, config.salary - plannedFixed);
 
   const pieSegs = [
     { name: "Rent", value: config.rent },
     { name: "SIPs", value: sipUSD },
     { name: "Loan", value: loanUSD },
     { name: "Subs", value: subsT },
-    { name: "Free", value: plannedFree },
+    { name: "Credit Cards", value: ccEstimate },
+    { name: "Left", value: plannedLeft },
   ].filter((s) => s.value > 0);
   const totalPie = pieSegs.reduce((s, x) => s + x.value, 0);
 
-  // Portfolio value (stocks + ETFs — holdings, not monthly outflow)
-  const portfolioINR = (config.investments || [])
+  // Portfolio holdings (stocks + ETFs — not monthly outflow)
+  const holdings = (config.investments || [])
     .filter((i) => i.type === "Stock" || i.type === "ETF")
-    .reduce((s, i) => s + (i.quantity || 0) * (i.buyPrice || 0), 0);
-  const stockCount = (config.investments || []).filter((i) => i.type === "Stock").length;
-  const etfCount = (config.investments || []).filter((i) => i.type === "ETF").length;
+    .map((i) => ({ ...i, _val: (i.quantity || 0) * (i.buyPrice || 0) }))
+    .sort((a, b) => b._val - a._val);
+  const portfolioINR = holdings.reduce((s, i) => s + i._val, 0);
 
   const [showNewMonth, setShowNewMonth] = useState(false);
   const [showRecap, setShowRecap] = useState(false);
@@ -300,7 +302,7 @@ export default function Dashboard({ config, expenses, updateExpenses, payments, 
       <div style={{ display: "flex", gap: 14, marginBottom: 18, flexWrap: "wrap" }}>
         <div style={{ flex: "1 1 500px", display: "flex", gap: 12, flexWrap: "wrap" }}>
           <Metric icon={DollarSign} label="Take Home" value={<Ctr value={config.salary} />} sub={fmt(toINR(config.salary, rate), "INR")} delay={0.04} />
-          <Metric icon={ArrowDownRight} label="Outflow" value={<Ctr value={outflow} />} sub={outflow === 0 ? "No expenses yet" : undefined} color={T.red} delay={0.08} />
+          <Metric icon={ArrowDownRight} label="Spent" value={<Ctr value={outflow} />} sub={outflow === 0 ? "No expenses yet" : undefined} color={T.red} delay={0.08} />
           <Metric icon={PiggyBank} label="Remaining" value={<Ctr value={remaining} />} sub={`${sr}% savings`} color={remaining > 0 ? T.accent : T.red} delay={0.12} />
           <Metric icon={Users} label="Lent Out" value={<Ctr value={lendT} />} sub={`${pendL.length} pending`} color={T.yellow} delay={0.16} />
         </div>
@@ -335,25 +337,45 @@ export default function Dashboard({ config, expenses, updateExpenses, payments, 
         </div>
       </GC>
 
-      {/* PORTFOLIO VALUE (only if user has stock/ETF holdings) */}
-      {portfolioINR > 0 && (
-        <GC delay={0.22} style={{ marginBottom: 18 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{
-              width: 40, height: 40, borderRadius: 11, background: T.blue + "14",
-              border: `1px solid ${T.blue}22`, display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-              <TrendingUp size={18} color={T.blue} />
-            </div>
-            <div>
-              <div style={{ fontSize: 10, color: T.textSec, textTransform: "uppercase", letterSpacing: "1px", fontWeight: 600 }}>Portfolio Value</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: T.text, fontFamily: "'JetBrains Mono'" }}>{fmt(portfolioINR, "INR")}</div>
-              <div style={{ fontSize: 11, color: T.textMut, fontFamily: "'JetBrains Mono'" }}>
-                {fmt(toUSD(portfolioINR, rate))} · {stockCount} stock{stockCount !== 1 ? "s" : ""}{etfCount > 0 ? `, ${etfCount} ETF${etfCount !== 1 ? "s" : ""}` : ""}
-              </div>
-            </div>
+      {/* PORTFOLIO CARD GRID (individual holdings) */}
+      {holdings.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: T.text, letterSpacing: "2px" }}>PORTFOLIO</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: T.textSec, fontFamily: "'JetBrains Mono'" }}>
+              {fmt(portfolioINR, "INR")} · {fmt(toUSD(portfolioINR, rate))}
+            </span>
           </div>
-        </GC>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: 10 }}>
+            {holdings.map((h) => {
+              const val = (h.quantity || 0) * (h.buyPrice || 0);
+              const weight = portfolioINR > 0 ? ((val / portfolioINR) * 100).toFixed(1) : "0";
+              const color = h.type === "ETF" ? "#534AB7" : "#3266ad";
+              return (
+                <GC key={h.id} delay={0} style={{ padding: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: T.text }}>{h.name}</span>
+                    <span style={{
+                      fontSize: 9, padding: "2px 8px", borderRadius: 20, fontWeight: 700,
+                      background: (h.type === "ETF" ? T.purple : T.blue) + "18",
+                      color: h.type === "ETF" ? T.purple : T.blue,
+                      border: `1px solid ${(h.type === "ETF" ? T.purple : T.blue)}33`,
+                    }}>
+                      {h.type}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 10, color: T.textMut, marginBottom: 8 }}>{h.quantity} {h.type === "ETF" ? "units" : "shares"}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: T.accent, fontFamily: "'JetBrains Mono'" }}>{fmt(val, "INR")}</div>
+                  <div style={{ fontSize: 10, color: T.textMut, fontFamily: "'JetBrains Mono'", marginTop: 2 }}>{fmt(toUSD(val, rate))}</div>
+                  <div style={{ height: 4, background: "rgba(255,255,255,.06)", borderRadius: 2, overflow: "hidden", marginTop: 10 }}>
+                    <div style={{ height: "100%", width: `${weight}%`, background: color, borderRadius: 2, transition: "width .5s" }} />
+                  </div>
+                  <div style={{ fontSize: 9, color: T.textMut, marginTop: 4 }}>{weight}% of portfolio</div>
+                </GC>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {/* 3D TREND */}

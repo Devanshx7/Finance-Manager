@@ -231,7 +231,7 @@ function MainApp({ user, onLogout }) {
       case "split":
         return <SplitPage splits={splits} updateSplits={updateSplits} />;
       case "assignments":
-        return <Assignments assignments={assignments} updateAssignments={updateAssignments} />;
+        return <Assignments assignments={assignments} updateAssignments={updateAssignments} config={config} />;
       case "analytics":
         return <Analytics config={config} history={history} />;
       case "calculator":

@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
-import { TrendingUp, RefreshCw, BarChart3, CircleDollarSign, Plus, Trash2, Edit3, Check, Briefcase } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Plus, Trash2, Edit3, Check, RefreshCw } from "lucide-react";
 import { T, fmt, toUSD } from "../config/theme";
-import { GC, Metric, Modal, Inp, Btn } from "../components/ui";
+import { GC, Modal, Inp, Btn } from "../components/ui";
 
 const INVESTMENT_TYPES = [
   { value: "SIP", label: "SIP" },
@@ -18,14 +18,9 @@ const EMPTY_FORM = {
   quantity: "", buyPrice: "", amount: "", currency: "INR",
 };
 
-const TYPE_META = {
-  Stock: { icon: TrendingUp, color: "#3b82f6", label: "STOCKS" },
-  SIP: { icon: RefreshCw, color: "#00e8b0", label: "SIPs" },
-  ETF: { icon: BarChart3, color: "#a855f7", label: "ETFs" },
-  Gold: { icon: CircleDollarSign, color: "#eab308", label: "GOLD" },
-  "Mutual Fund": { icon: TrendingUp, color: "#06b6d4", label: "MUTUAL FUNDS" },
-  Crypto: { icon: Briefcase, color: "#ff6b35", label: "CRYPTO" },
-  Other: { icon: Briefcase, color: "#7a839e", label: "OTHER" },
+const TYPE_COLORS = {
+  Stock: "#3266ad", ETF: "#534AB7", SIP: "#1D9E75",
+  Gold: "#eab308", "Mutual Fund": "#06b6d4", Crypto: "#ff6b35", Other: "#7a839e",
 };
 
 function InvestmentFields({ form, setForm }) {
@@ -50,30 +45,11 @@ function InvestmentFields({ form, setForm }) {
   );
 }
 
-function getDisplayValue(inv, rate) {
-  if (inv.type === "SIP") return { main: fmt(inv.monthlyAmount || 0, "INR"), sub: `${fmt(toUSD(inv.monthlyAmount || 0, rate))}/mo` };
-  if (inv.type === "Stock" || inv.type === "ETF") {
-    const total = (inv.quantity || 0) * (inv.buyPrice || 0);
-    return { main: fmt(total, "INR"), sub: `${inv.quantity} @ ${fmt(inv.buyPrice || 0, "INR")}` };
-  }
-  return { main: fmt(inv.amount || 0, inv.currency || "INR"), sub: inv.currency === "USD" ? fmt((inv.amount || 0) * rate, "INR") : fmt(toUSD(inv.amount || 0, rate)) };
-}
-
-function getSectionTotal(items, rate) {
-  if (!items.length) return 0;
-  const t = items[0].type;
-  if (t === "SIP") return items.reduce((s, i) => s + (i.monthlyAmount || 0), 0);
-  if (t === "Stock" || t === "ETF") return items.reduce((s, i) => s + (i.quantity || 0) * (i.buyPrice || 0), 0);
-  return items.reduce((s, i) => {
-    const amt = i.amount || 0;
-    return s + (i.currency === "USD" ? amt * rate : amt);
-  }, 0);
-}
-
 export default function Investments({ config, updateConfig }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [filter, setFilter] = useState("All");
 
   const rate = config.exchangeRate || 93.5;
 
@@ -83,13 +59,11 @@ export default function Investments({ config, updateConfig }) {
       const migrated = [
         ...(config.sips || []).map((s) => ({
           id: s.id || `sip-${Date.now()}-${Math.random()}`,
-          name: s.name, type: "SIP",
-          monthlyAmount: s.amountINR || 0, debitDate: s.date || 1,
+          name: s.name, type: "SIP", monthlyAmount: s.amountINR || 0, debitDate: s.date || 1,
         })),
         ...(config.stocks || []).map((s) => ({
           id: s.id || `st-${Date.now()}-${Math.random()}`,
-          name: s.name, type: "Stock",
-          quantity: s.qty || 0, buyPrice: s.buyPrice || 0,
+          name: s.name, type: "Stock", quantity: s.qty || 0, buyPrice: s.buyPrice || 0,
         })),
       ];
       updateConfig((prev) => ({ ...prev, investments: migrated }));
@@ -98,21 +72,38 @@ export default function Investments({ config, updateConfig }) {
 
   const investments = config.investments || [];
 
-  // Metrics
-  const sipTotal = investments.filter((i) => i.type === "SIP").reduce((s, i) => s + (i.monthlyAmount || 0), 0);
-  const stockTotal = investments.filter((i) => i.type === "Stock").reduce((s, i) => s + (i.quantity || 0) * (i.buyPrice || 0), 0);
-  const etfTotal = investments.filter((i) => i.type === "ETF").reduce((s, i) => s + (i.quantity || 0) * (i.buyPrice || 0), 0);
-  const otherItems = investments.filter((i) => !["SIP", "Stock", "ETF"].includes(i.type));
-  const otherTotal = otherItems.reduce((s, i) => {
-    const amt = i.amount || 0;
-    return s + (i.currency === "USD" ? amt * rate : amt);
-  }, 0);
+  // Holdings = stocks + ETFs with value
+  const holdings = useMemo(() =>
+    investments
+      .filter((i) => i.type === "Stock" || i.type === "ETF")
+      .map((i) => ({ ...i, value: (i.quantity || 0) * (i.buyPrice || 0) }))
+      .sort((a, b) => b.value - a.value),
+    [investments]
+  );
+  const totalHoldings = holdings.reduce((s, h) => s + h.value, 0);
 
-  // Group by type (ordered)
-  const typeOrder = ["Stock", "SIP", "ETF", "Gold", "Mutual Fund", "Crypto", "Other"];
-  const groups = typeOrder
-    .map((type) => ({ type, items: investments.filter((i) => i.type === type) }))
-    .filter((g) => g.items.length > 0);
+  // SIPs
+  const sips = investments.filter((i) => i.type === "SIP");
+  const sipTotal = sips.reduce((s, i) => s + (i.monthlyAmount || 0), 0);
+
+  // Filtered list for table
+  const tableData = useMemo(() => {
+    const all = investments.map((i) => {
+      if (i.type === "SIP") return { ...i, displayVal: i.monthlyAmount || 0, valCurrency: "INR", isSIP: true };
+      if (i.type === "Stock" || i.type === "ETF") return { ...i, displayVal: (i.quantity || 0) * (i.buyPrice || 0), valCurrency: "INR", isSIP: false };
+      return { ...i, displayVal: i.amount || 0, valCurrency: i.currency || "INR", isSIP: false };
+    });
+    if (filter === "All") return all;
+    if (filter === "Stocks") return all.filter((i) => i.type === "Stock");
+    if (filter === "SIPs") return all.filter((i) => i.type === "SIP");
+    if (filter === "ETFs") return all.filter((i) => i.type === "ETF");
+    return all;
+  }, [investments, filter]);
+
+  // Total portfolio (holdings + other non-SIP)
+  const totalVal = totalHoldings + investments
+    .filter((i) => !["SIP", "Stock", "ETF"].includes(i.type))
+    .reduce((s, i) => s + ((i.currency === "USD" ? (i.amount || 0) * rate : (i.amount || 0))), 0);
 
   const syncLegacy = (newInvestments) => {
     const newSips = newInvestments.filter((i) => i.type === "SIP").map((i) => ({ id: i.id, name: i.name, amountINR: i.monthlyAmount || 0, date: i.debitDate || 1 }));
@@ -121,7 +112,6 @@ export default function Investments({ config, updateConfig }) {
   };
 
   const openAdd = () => { setForm({ ...EMPTY_FORM }); setEditId(null); setShowAdd(true); };
-
   const openEdit = (inv) => {
     setForm({
       name: inv.name, type: inv.type,
@@ -129,15 +119,13 @@ export default function Investments({ config, updateConfig }) {
       quantity: inv.quantity || "", buyPrice: inv.buyPrice || "",
       amount: inv.amount || "", currency: inv.currency || "INR",
     });
-    setEditId(inv.id);
-    setShowAdd(true);
+    setEditId(inv.id); setShowAdd(true);
   };
 
   const save = () => {
     if (!form.name) return;
     const entry = {
-      id: editId || `inv-${Date.now()}`,
-      name: form.name, type: form.type,
+      id: editId || `inv-${Date.now()}`, name: form.name, type: form.type,
       ...(form.type === "SIP" && { monthlyAmount: parseFloat(form.monthlyAmount) || 0, debitDate: parseInt(form.debitDate) || 1 }),
       ...((form.type === "Stock" || form.type === "ETF") && { quantity: parseFloat(form.quantity) || 0, buyPrice: parseFloat(form.buyPrice) || 0 }),
       ...(!["SIP", "Stock", "ETF"].includes(form.type) && { amount: parseFloat(form.amount) || 0, currency: form.currency }),
@@ -159,95 +147,158 @@ export default function Investments({ config, updateConfig }) {
     });
   };
 
+  const tabs = ["All", "Stocks", "SIPs", "ETFs"];
+
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
-        <h2 style={{ fontFamily: "'DM Sans'", color: T.text, fontSize: 21, fontWeight: 700, margin: 0 }}>Investments</h2>
+      {/* HEADER */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+        <div>
+          <div style={{ fontSize: 11, color: T.textMut, fontWeight: 700, letterSpacing: "2px", marginBottom: 6 }}>PORTFOLIO</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+            <span style={{ fontSize: 28, fontWeight: 700, color: T.text, fontFamily: "'JetBrains Mono'" }}>{fmt(totalVal, "INR")}</span>
+            <span style={{ fontSize: 14, color: T.textMut, fontFamily: "'JetBrains Mono'" }}>{fmt(toUSD(totalVal, rate))}</span>
+          </div>
+        </div>
         <Btn onClick={openAdd}><Plus size={14} /> Add Investment</Btn>
       </div>
 
-      {/* METRICS */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
-        <Metric icon={RefreshCw} label="Monthly SIPs" value={fmt(sipTotal, "INR")} sub={fmt(toUSD(sipTotal, rate))} color={T.accent} delay={0.04} />
-        <Metric icon={TrendingUp} label="Stock Holdings" value={fmt(stockTotal, "INR")} sub={fmt(toUSD(stockTotal, rate))} color={T.blue} delay={0.08} />
-        {etfTotal > 0 && <Metric icon={BarChart3} label="ETF Holdings" value={fmt(etfTotal, "INR")} sub={fmt(toUSD(etfTotal, rate))} color={T.purple} delay={0.12} />}
-        {otherTotal > 0 && <Metric icon={Briefcase} label="Other" value={fmt(otherTotal, "INR")} sub={fmt(toUSD(otherTotal, rate))} color={T.orange} delay={0.16} />}
+      {/* FILTER TABS */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
+        {tabs.map((tab) => (
+          <button key={tab} type="button" onClick={() => setFilter(tab)} style={{
+            padding: "6px 16px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer",
+            border: "none", fontFamily: "'DM Sans'", transition: "all .2s",
+            background: filter === tab ? T.accent : "rgba(255,255,255,.05)",
+            color: filter === tab ? "#030507" : T.textMut,
+          }}>
+            {tab}
+          </button>
+        ))}
       </div>
 
-      {/* GROUPED SECTIONS */}
-      {investments.length === 0 ? (
-        <GC hover={false}>
-          <div style={{ padding: 30, textAlign: "center", color: T.textMut, fontSize: 12 }}>
-            No investments yet. Tap "Add Investment" to get started.
+      {/* TREEMAP (holdings only) */}
+      {holdings.length > 0 && (
+        <div style={{ display: "flex", height: 160, borderRadius: 12, overflow: "hidden", marginBottom: 18, gap: 3 }}>
+          {holdings.map((h) => {
+            const pct = totalHoldings > 0 ? (h.value / totalHoldings) * 100 : 0;
+            if (pct < 2) return null;
+            const color = TYPE_COLORS[h.type] || T.textMut;
+            return (
+              <div key={h.id} style={{
+                flex: `${pct} 0 0%`, background: color + "22", border: `1px solid ${color}33`,
+                padding: 12, display: "flex", flexDirection: "column", justifyContent: "space-between",
+                minWidth: pct > 15 ? 80 : 50, overflow: "hidden",
+              }}>
+                <div>
+                  <div style={{ fontSize: 9, color: color, fontWeight: 700, letterSpacing: "1px", marginBottom: 2 }}>{h.type.toUpperCase()}</div>
+                  {pct > 15 && <div style={{ fontSize: 13, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{h.name}</div>}
+                </div>
+                <div>
+                  {pct > 12 && <div style={{ fontSize: 12, fontWeight: 700, color: T.text, fontFamily: "'JetBrains Mono'" }}>{fmt(h.value, "INR")}</div>}
+                  <div style={{ fontSize: 10, color: T.textMut, fontFamily: "'JetBrains Mono'" }}>{pct.toFixed(1)}%</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* DATA TABLE */}
+      <GC hover={false} style={{ marginBottom: 18, padding: "16px 20px" }}>
+        {/* Table header */}
+        <div style={{
+          display: "grid", gridTemplateColumns: "2fr 70px 60px 1fr 60px 70px",
+          gap: 8, padding: "8px 0", borderBottom: `1px solid ${T.border}`, marginBottom: 4,
+        }}>
+          {["NAME", "TYPE", "QTY", "VALUE", "WEIGHT", ""].map((h) => (
+            <span key={h} style={{ fontSize: 10, color: T.textMut, fontWeight: 700, letterSpacing: "1px" }}>{h}</span>
+          ))}
+        </div>
+
+        {tableData.length === 0 ? (
+          <div style={{ padding: 24, textAlign: "center", color: T.textMut, fontSize: 12 }}>
+            {investments.length === 0 ? "No investments yet." : "No items match this filter."}
+          </div>
+        ) : (
+          tableData.map((inv) => {
+            const color = TYPE_COLORS[inv.type] || T.textMut;
+            const weight = totalVal > 0 ? ((inv.displayVal / totalVal) * 100).toFixed(1) : "0";
+            return (
+              <div key={inv.id} style={{
+                display: "grid", gridTemplateColumns: "2fr 70px 60px 1fr 60px 70px",
+                gap: 8, padding: "10px 0", borderBottom: `1px solid ${T.border}`, alignItems: "center",
+              }}>
+                {/* Name */}
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{inv.name}</div>
+                  {inv.isSIP && inv.debitDate && <div style={{ fontSize: 10, color: T.textMut }}>{inv.debitDate}th</div>}
+                </div>
+                {/* Type badge */}
+                <span style={{
+                  fontSize: 9, padding: "3px 8px", borderRadius: 20, fontWeight: 700, textAlign: "center",
+                  background: color + "22", color, border: `1px solid ${color}44`, whiteSpace: "nowrap",
+                }}>
+                  {inv.type}
+                </span>
+                {/* Qty */}
+                <span style={{ fontSize: 12, color: T.textMut, fontFamily: "'JetBrains Mono'" }}>
+                  {inv.type === "SIP" ? "—" : (inv.quantity || inv.amount || "—")}
+                </span>
+                {/* Value */}
+                <div>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: T.accent, fontFamily: "'JetBrains Mono'" }}>
+                    {fmt(inv.displayVal, inv.valCurrency)}
+                  </span>
+                  {inv.isSIP && <span style={{ fontSize: 10, color: T.textMut }}>/mo</span>}
+                  <div style={{ fontSize: 10, color: T.textMut, fontFamily: "'JetBrains Mono'" }}>
+                    {inv.valCurrency === "INR" ? fmt(toUSD(inv.displayVal, rate)) : fmt(inv.displayVal * rate, "INR")}
+                  </div>
+                </div>
+                {/* Weight */}
+                <span style={{ fontSize: 11, color: T.textMut, fontFamily: "'JetBrains Mono'" }}>{weight}%</span>
+                {/* Actions */}
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button onClick={() => openEdit(inv)} style={{ background: "rgba(255,255,255,.04)", border: `1px solid ${T.border}`, cursor: "pointer", color: T.textSec, padding: 5, borderRadius: 6, display: "flex" }}>
+                    <Edit3 size={11} />
+                  </button>
+                  <button onClick={() => remove(inv.id)} style={{ background: T.red + "12", border: `1px solid ${T.red}22`, cursor: "pointer", color: T.red, padding: 5, borderRadius: 6, display: "flex" }}>
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </GC>
+
+      {/* SIP STRIP */}
+      {sips.length > 0 && (
+        <GC hover={false} style={{ borderLeft: `3px solid #1D9E75`, paddingLeft: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <RefreshCw size={14} color="#1D9E75" />
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.text, letterSpacing: "1px" }}>MONTHLY SIPs</span>
+            </div>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#1D9E75", fontFamily: "'JetBrains Mono'" }}>
+              {fmt(sipTotal, "INR")}<span style={{ fontSize: 10, color: T.textMut, fontWeight: 400 }}>/mo · {fmt(toUSD(sipTotal, rate))}</span>
+            </span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(180px,1fr))", gap: 8 }}>
+            {sips.map((s) => (
+              <div key={s.id} style={{
+                padding: "10px 14px", background: "rgba(255,255,255,.02)", borderRadius: 10,
+                border: `1px solid ${T.border}`,
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{s.name}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: T.accent, fontFamily: "'JetBrains Mono'", marginTop: 4 }}>
+                  {fmt(s.monthlyAmount || 0, "INR")}
+                </div>
+                <div style={{ fontSize: 10, color: T.textMut }}>{s.debitDate || 1}th of month</div>
+              </div>
+            ))}
           </div>
         </GC>
-      ) : (
-        groups.map((group, gi) => {
-          const meta = TYPE_META[group.type] || TYPE_META.Other;
-          const Ic = meta.icon;
-          const sectionTotal = getSectionTotal(group.items, rate);
-          const isSIP = group.type === "SIP";
-          const isHolding = group.type === "Stock" || group.type === "ETF";
-
-          return (
-            <GC key={group.type} hover={false} delay={gi * 0.06} style={{ marginBottom: 14, borderLeft: `3px solid ${meta.color}`, paddingLeft: 20 }}>
-              {/* Section header */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{
-                    width: 32, height: 32, borderRadius: 9, background: meta.color + "14",
-                    border: `1px solid ${meta.color}22`, display: "flex", alignItems: "center", justifyContent: "center",
-                  }}>
-                    <Ic size={15} color={meta.color} />
-                  </div>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: T.text, letterSpacing: "2px" }}>{meta.label}</span>
-                  <span style={{
-                    fontSize: 10, padding: "2px 8px", borderRadius: 20,
-                    background: "rgba(255,255,255,.06)", color: T.textSec, fontWeight: 600,
-                  }}>
-                    {group.items.length}
-                  </span>
-                </div>
-                <span style={{ fontSize: 13, fontWeight: 700, color: meta.color, fontFamily: "'JetBrains Mono'" }}>
-                  {fmt(sectionTotal, "INR")}
-                  {isSIP && <span style={{ fontSize: 10, color: T.textMut, fontWeight: 400 }}>/mo</span>}
-                </span>
-              </div>
-
-              {/* Items */}
-              {group.items.map((inv, i) => {
-                const { main, sub } = getDisplayValue(inv, rate);
-                return (
-                  <div key={inv.id} style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    padding: "11px 0",
-                    borderBottom: i < group.items.length - 1 ? `1px solid ${T.border}` : "none",
-                  }}>
-                    <div>
-                      <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{inv.name}</div>
-                      <div style={{ fontSize: 10, color: T.textMut }}>
-                        {inv.type === "SIP" && inv.debitDate ? `${inv.debitDate}th of month` : ""}
-                        {isHolding ? `${inv.quantity} shares` : ""}
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: meta.color, fontFamily: "'JetBrains Mono'" }}>{main}</div>
-                        <div style={{ fontSize: 10, color: T.textMut, fontFamily: "'JetBrains Mono'" }}>{sub}</div>
-                      </div>
-                      <button onClick={() => openEdit(inv)} style={{ background: "rgba(255,255,255,.04)", border: `1px solid ${T.border}`, cursor: "pointer", color: T.textSec, padding: 5, borderRadius: 6, display: "flex" }}>
-                        <Edit3 size={12} />
-                      </button>
-                      <button onClick={() => remove(inv.id)} style={{ background: T.red + "12", border: `1px solid ${T.red}22`, cursor: "pointer", color: T.red, padding: 5, borderRadius: 6, display: "flex" }}>
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </GC>
-          );
-        })
       )}
 
       {/* ADD/EDIT MODAL */}

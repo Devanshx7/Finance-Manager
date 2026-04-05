@@ -25,6 +25,8 @@ export default function SettingsPage({ config, updateConfig }) {
           <Inp label="Salary (USD)" value={config.salary} onChange={(v) => update("salary", parseFloat(v) || 0)} type="number" />
           <Inp label="Rent (USD)" value={config.rent} onChange={(v) => update("rent", parseFloat(v) || 0)} type="number" />
           <Inp label="Exchange Rate" value={config.exchangeRate} onChange={(v) => update("exchangeRate", parseFloat(v) || 83.5)} type="number" />
+          <Inp label="Credit Card Estimate (USD/mo)" value={config.creditCardEstimate || 0} onChange={(v) => update("creditCardEstimate", parseFloat(v) || 0)} type="number" />
+          <p style={{ fontSize: 10, color: T.textMut, marginTop: -8 }}>Estimated monthly credit card spending across all cards</p>
         </GC>
 
         {/* STUDENT LOAN */}

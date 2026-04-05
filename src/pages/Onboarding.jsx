@@ -69,6 +69,7 @@ export default function Onboarding({ onComplete }) {
         totalRemaining: parseFloat(cfg.studentLoan.totalRemaining) || 0,
       },
       subscriptions: cfg.subscriptions.filter((s) => s.name).map((s) => ({ ...s, amount: parseFloat(s.amount) || 0 })),
+      creditCardEstimate: parseFloat(cfg.creditCardEstimate) || 400,
       customBudget: [],
     };
     const finalLending = lending.filter((l) => l.name).map((l) => ({ ...l, amount: parseFloat(l.amount) || 0, settled: false }));
@@ -78,7 +79,7 @@ export default function Onboarding({ onComplete }) {
   const skipSetup = () => {
     onComplete({
       salary: 0, rent: 0, exchangeRate: 83.5, cards: [], sips: [], stocks: [],
-      investments: [],
+      investments: [], creditCardEstimate: 400,
       studentLoan: { amountINR: 0, date: 1, totalRemaining: 0 },
       subscriptions: [], customBudget: [],
     }, []);
@@ -149,7 +150,9 @@ export default function Onboarding({ onComplete }) {
                   <button onClick={() => removeArr("cards", i)} style={{ background: "none", border: "none", color: T.textMut, cursor: "pointer", padding: "0 0 16px" }}><Trash2 size={14} /></button>
                 </div>
               ))}
-              <Btn small variant="ghost" onClick={addCard}><Plus size={13} /> Add Card</Btn>
+              <Btn small variant="ghost" onClick={addCard} style={{ marginBottom: 16 }}><Plus size={13} /> Add Card</Btn>
+              <Inp label="Estimated monthly CC bill (USD)" value={cfg.creditCardEstimate || ""} onChange={(v) => uc("creditCardEstimate", v)} type="number" placeholder="400" />
+              <p style={{ color: T.textMut, fontSize: 10, marginTop: -6 }}>Total across all cards. Default $400 if unsure.</p>
             </div>
           )}
 

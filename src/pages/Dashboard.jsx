@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { DollarSign, ArrowDownRight, PiggyBank, Users, Bell, RefreshCw, Check, ChevronRight, AlertCircle, AlertTriangle, Archive } from "lucide-react";
+import { DollarSign, ArrowDownRight, PiggyBank, Users, Bell, RefreshCw, Check, ChevronRight, AlertCircle, AlertTriangle, Archive, TrendingUp } from "lucide-react";
 import { T, PIE_COLORS, toINR, toUSD, fmt, MONTH_NAMES } from "../config/theme";
 import { GC, Metric, Ctr, Modal, Btn } from "../components/ui";
 import { ThreeDonut, ThreeScene, ArcReactor } from "../components/Charts";
@@ -48,8 +48,10 @@ export default function Dashboard({ config, expenses, updateExpenses, payments, 
   // Current month expenses only
   const monthExpenses = expenses.filter((e) => (e.monthTag || "") === currentMonth || (!e.monthTag));
 
-  // Outflow = SUM of expenses logged this month ONLY
-  const outflow = monthExpenses.reduce((s, e) => s + (e.currency === "USD" ? e.amount : toUSD(e.amount, rate)), 0);
+  // Outflow = SUM of expenses logged this month ONLY (exclude external cash payments)
+  const outflow = monthExpenses
+    .filter((e) => !e.cashPayment)
+    .reduce((s, e) => s + (e.currency === "USD" ? e.amount : toUSD(e.amount, rate)), 0);
   const remaining = config.salary - outflow;
   const sr = ((remaining / Math.max(config.salary, 1)) * 100).toFixed(1);
 
@@ -63,15 +65,11 @@ export default function Dashboard({ config, expenses, updateExpenses, payments, 
   const allDues = getAllDues(config);
   const upcomingDues = allDues.filter((d) => !clearedDues.has(d.id));
 
-  // Budget Allocation pie = the PLAN (how salary should be distributed based on config)
+  // Outflow Allocation pie = ONLY monthly outflow categories (no holdings)
   const sipUSD = (config.sips || []).reduce((s, x) => s + toUSD(x.amountINR, rate), 0);
   const loanUSD = config.studentLoan ? toUSD(config.studentLoan.amountINR, rate) : 0;
   const subsT = (config.subscriptions || []).reduce((s, x) => s + x.amount, 0);
-  const investUSD = ((config.investments || []).reduce((s, inv) => {
-    if (inv.type === "SIP") return s + toUSD(inv.monthlyAmount || 0, rate);
-    return s;
-  }, 0));
-  const plannedFixed = config.rent + sipUSD + loanUSD + subsT + investUSD;
+  const plannedFixed = config.rent + sipUSD + loanUSD + subsT;
   const plannedFree = Math.max(0, config.salary - plannedFixed);
 
   const pieSegs = [
@@ -79,10 +77,16 @@ export default function Dashboard({ config, expenses, updateExpenses, payments, 
     { name: "SIPs", value: sipUSD },
     { name: "Loan", value: loanUSD },
     { name: "Subs", value: subsT },
-    ...(investUSD > 0 ? [{ name: "Investments", value: investUSD }] : []),
     { name: "Free", value: plannedFree },
   ].filter((s) => s.value > 0);
   const totalPie = pieSegs.reduce((s, x) => s + x.value, 0);
+
+  // Portfolio value (stocks + ETFs — holdings, not monthly outflow)
+  const portfolioINR = (config.investments || [])
+    .filter((i) => i.type === "Stock" || i.type === "ETF")
+    .reduce((s, i) => s + (i.quantity || 0) * (i.buyPrice || 0), 0);
+  const stockCount = (config.investments || []).filter((i) => i.type === "Stock").length;
+  const etfCount = (config.investments || []).filter((i) => i.type === "ETF").length;
 
   const [showNewMonth, setShowNewMonth] = useState(false);
   const [showRecap, setShowRecap] = useState(false);
@@ -303,11 +307,11 @@ export default function Dashboard({ config, expenses, updateExpenses, payments, 
         <ArcReactor config={config} expenses={monthExpenses} payments={payments} lending={lending} />
       </div>
 
-      {/* BUDGET ALLOCATION (PLAN — not actual spending) */}
+      {/* OUTFLOW ALLOCATION (PLAN — monthly outflow only, no holdings) */}
       <GC delay={0.2} style={{ marginBottom: 18 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-          <h3 style={{ color: T.text, fontSize: 14, fontWeight: 700, margin: 0 }}>Budget Allocation</h3>
-          <span style={{ fontSize: 10, color: T.textMut, fontStyle: "italic" }}>Planned distribution</span>
+          <h3 style={{ color: T.text, fontSize: 14, fontWeight: 700, margin: 0 }}>Outflow Allocation</h3>
+          <span style={{ fontSize: 10, color: T.textMut, fontStyle: "italic" }}>Monthly planned outflow</span>
         </div>
         <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ flex: "1 1 250px", minWidth: 210 }}><ThreeDonut segments={pieSegs} height={220} /></div>
@@ -330,6 +334,27 @@ export default function Dashboard({ config, expenses, updateExpenses, payments, 
           </div>
         </div>
       </GC>
+
+      {/* PORTFOLIO VALUE (only if user has stock/ETF holdings) */}
+      {portfolioINR > 0 && (
+        <GC delay={0.22} style={{ marginBottom: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: 11, background: T.blue + "14",
+              border: `1px solid ${T.blue}22`, display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <TrendingUp size={18} color={T.blue} />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: T.textSec, textTransform: "uppercase", letterSpacing: "1px", fontWeight: 600 }}>Portfolio Value</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: T.text, fontFamily: "'JetBrains Mono'" }}>{fmt(portfolioINR, "INR")}</div>
+              <div style={{ fontSize: 11, color: T.textMut, fontFamily: "'JetBrains Mono'" }}>
+                {fmt(toUSD(portfolioINR, rate))} · {stockCount} stock{stockCount !== 1 ? "s" : ""}{etfCount > 0 ? `, ${etfCount} ETF${etfCount !== 1 ? "s" : ""}` : ""}
+              </div>
+            </div>
+          </div>
+        </GC>
+      )}
 
       {/* 3D TREND */}
       <GC delay={0.24}>

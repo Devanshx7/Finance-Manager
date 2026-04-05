@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Plus, Receipt, Trash2, ChevronDown, Calendar } from "lucide-react";
+import { Plus, Receipt, Trash2, ChevronDown, Calendar, Banknote } from "lucide-react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
 import { T, PIE_COLORS, toINR, toUSD, fmt, tipStyle, CATEGORIES, MONTH_NAMES } from "../config/theme";
 import { GC, Ctr, Modal, Inp, Btn } from "../components/ui";
@@ -40,7 +40,7 @@ export default function Expenses({ config, expenses, updateExpenses, history }) 
   const [form, setForm] = useState({
     desc: "", amount: "", category: "Food",
     date: new Date().toISOString().split("T")[0],
-    currency: "USD", clears: "",
+    currency: "USD", clears: "", cashPayment: false,
   });
 
   const isCurrentMonth = selectedMonth === currentMonth;
@@ -72,16 +72,20 @@ export default function Expenses({ config, expenses, updateExpenses, history }) 
   const add = () => {
     if (!form.desc || !form.amount) return;
     updateExpenses((p) => [{
-      ...form,
-      id: Date.now(),
+      desc: form.desc,
       amount: parseFloat(form.amount),
+      currency: form.currency,
+      category: form.category,
+      date: form.date,
       clears: form.clears || null,
+      cashPayment: form.cashPayment || false,
+      id: Date.now(),
       monthTag: currentMonth,
     }, ...p]);
     setForm({
       desc: "", amount: "", category: "Food",
       date: new Date().toISOString().split("T")[0],
-      currency: "USD", clears: "",
+      currency: "USD", clears: "", cashPayment: false,
     });
     setShowAdd(false);
   };
@@ -227,6 +231,15 @@ export default function Expenses({ config, expenses, updateExpenses, history }) 
                         clears: {clearsOptions.find((o) => o.value === e.clears)?.label || e.clears}
                       </span>
                     )}
+                    {e.cashPayment && (
+                      <span style={{
+                        marginLeft: 8, fontSize: 9, padding: "2px 8px",
+                        background: T.orange + "14", color: T.orange,
+                        borderRadius: 20, fontWeight: 700, border: `1px solid ${T.orange}33`,
+                      }}>
+                        CASH
+                      </span>
+                    )}
                   </div>
                   <div style={{ fontSize: 10, color: T.textMut }}>{e.category} · {e.date}</div>
                 </div>
@@ -287,6 +300,36 @@ export default function Expenses({ config, expenses, updateExpenses, history }) 
         <Inp label="Category" value={form.category} onChange={(v) => setForm((p) => ({ ...p, category: v }))} options={CATEGORIES} />
         <Inp label="Date" value={form.date} onChange={(v) => setForm((p) => ({ ...p, date: v }))} type="date" />
         <Inp label="Clears" value={form.clears} onChange={(v) => setForm((p) => ({ ...p, clears: v }))} options={clearsOptions} />
+
+        {/* External cash toggle */}
+        <div style={{ marginBottom: 14 }}>
+          <button
+            onClick={() => setForm((p) => ({ ...p, cashPayment: !p.cashPayment }))}
+            style={{
+              display: "flex", alignItems: "center", gap: 10, width: "100%",
+              padding: "10px 14px", borderRadius: 9, cursor: "pointer",
+              background: form.cashPayment ? T.orange + "12" : "rgba(255,255,255,.03)",
+              border: `1px solid ${form.cashPayment ? T.orange + "44" : T.border}`,
+              transition: "all .2s",
+            }}
+          >
+            <div style={{
+              width: 18, height: 18, borderRadius: 5,
+              background: form.cashPayment ? T.orange : "transparent",
+              border: `2px solid ${form.cashPayment ? T.orange : T.textMut}`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "all .2s",
+            }}>
+              {form.cashPayment && <div style={{ width: 8, height: 8, borderRadius: 2, background: "#fff" }} />}
+            </div>
+            <Banknote size={15} color={form.cashPayment ? T.orange : T.textMut} />
+            <div style={{ textAlign: "left" }}>
+              <div style={{ fontSize: 12, color: form.cashPayment ? T.orange : T.textSec, fontWeight: 600, fontFamily: "'DM Sans'" }}>External cash</div>
+              <div style={{ fontSize: 10, color: T.textMut, fontFamily: "'DM Sans'" }}>Don't count toward salary</div>
+            </div>
+          </button>
+        </div>
+
         <Btn onClick={add} style={{ width: "100%", justifyContent: "center" }}><Plus size={14} /> Add</Btn>
       </Modal>
     </div>

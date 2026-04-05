@@ -19,27 +19,13 @@ export default function SplitPage({ splits, updateSplits }) {
     setShowPerson(false);
   };
 
-  // Get available people for "Split With" based on who paid
-  const getSplitOptions = () => {
-    if (form.paidBy === "me") {
-      return people; // I paid — split with any of the added people
-    }
-    // Someone else paid — split with "Me" + everyone except the payer
-    return ["Me", ...people.filter((p) => p !== form.paidBy)];
-  };
-
   const handlePayerChange = (v) => {
-    setForm((f) => ({ ...f, paidBy: v, splitWith: [] })); // Reset splitWith when payer changes
+    setForm((f) => ({ ...f, paidBy: v, splitWith: [] }));
   };
 
-  const toggleSplitWith = (p) => {
-    setForm((f) => ({
-      ...f,
-      splitWith: f.splitWith.includes(p)
-        ? f.splitWith.filter((x) => x !== p)
-        : [...f.splitWith, p],
-    }));
-  };
+  const splitOptions = form.paidBy === "me"
+    ? people
+    : ["Me", ...people.filter((p) => p !== form.paidBy)];
 
   const addTxn = () => {
     if (!form.desc || !form.amount || form.splitWith.length === 0) return;
@@ -194,23 +180,41 @@ export default function SplitPage({ splits, updateSplits }) {
         <div style={{ marginBottom: 14 }}>
           <label style={{ display: "block", fontSize: 10, color: T.textSec, marginBottom: 8, fontWeight: 600, letterSpacing: "1px", textTransform: "uppercase" }}>Split With</label>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {getSplitOptions().map((p) => {
-              const selected = form.splitWith.includes(p);
+            {splitOptions.map((name) => {
+              const isSelected = form.splitWith.includes(name);
               return (
-                <button key={p} onClick={() => toggleSplitWith(p)} style={{
-                  padding: "8px 16px", borderRadius: 9,
-                  border: `1px solid ${selected ? T.accent : T.border}`,
-                  background: selected ? T.accent + "22" : "rgba(255,255,255,.03)",
-                  color: selected ? T.accent : T.textSec,
-                  fontSize: 12, cursor: "pointer", fontWeight: selected ? 700 : 500, fontFamily: "'DM Sans'",
-                  display: "flex", alignItems: "center", gap: 6, transition: "all .2s",
-                }}>
-                  {selected && <Check size={12} />}
-                  {p}
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => {
+                    setForm((prev) => ({
+                      ...prev,
+                      splitWith: prev.splitWith.includes(name)
+                        ? prev.splitWith.filter((n) => n !== name)
+                        : [...prev.splitWith, name],
+                    }));
+                  }}
+                  style={{
+                    padding: "8px 16px", borderRadius: 9,
+                    border: `1px solid ${isSelected ? T.accent : T.border}`,
+                    background: isSelected ? T.accent + "22" : "rgba(255,255,255,.05)",
+                    color: isSelected ? T.accent : "#fff",
+                    fontSize: 12, cursor: "pointer",
+                    fontWeight: isSelected ? 700 : 500,
+                    fontFamily: "'DM Sans'",
+                    display: "flex", alignItems: "center", gap: 6,
+                    transition: "all 0.2s",
+                  }}
+                >
+                  {isSelected && <Check size={14} />}
+                  {name}
                 </button>
               );
             })}
           </div>
+          {splitOptions.length === 0 && (
+            <p style={{ color: T.textMut, fontSize: 12, marginTop: 8 }}>Add people first using "Add Person" above</p>
+          )}
         </div>
 
         <Inp label="Date" value={form.date} onChange={(v) => setForm((p) => ({ ...p, date: v }))} type="date" />

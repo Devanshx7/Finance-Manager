@@ -1,19 +1,15 @@
 import { T, toUSD, daysUntil, daysSince } from "../config/theme";
 import { GC } from "./ui";
 
-export function Greeting({ config, expenses, payments, lending }) {
+export function Greeting({ config, expenses, lending, userName }) {
   const hour = new Date().getHours();
   const timeGreeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const r = config.exchangeRate;
 
-  const sipUSD = config.sips.reduce((s, x) => s + toUSD(x.amountINR, r), 0);
-  const fixedT = config.rent + sipUSD + toUSD(config.studentLoan.amountINR, r) + config.subscriptions.reduce((s, x) => s + x.amount, 0);
   const varT = expenses.reduce((s, e) => s + (e.currency === "USD" ? e.amount : toUSD(e.amount, r)), 0);
-  const rem = config.salary - fixedT - varT;
+  const rem = config.salary - varT;
   const savingsRate = ((rem / Math.max(config.salary, 1)) * 100).toFixed(1);
 
-  const paidCount = Object.values(payments).filter(Boolean).length;
-  const totalActions = config.sips.length + config.cards.length + 1;
   const pendingLend = lending.filter((l) => !l.settled);
   const timedReminders = pendingLend.filter((l) => l.delayType === "timed" && daysSince(l.date) >= 14);
 
@@ -23,20 +19,21 @@ export function Greeting({ config, expenses, payments, lending }) {
   ];
   const urgent = alerts.filter((a) => a.days <= 3);
 
-  let status = "All systems nominal, boss.";
+  let status = "All systems nominal.";
   let statusColor = T.accent;
   if (parseFloat(savingsRate) < 20) {
-    status = "Warning: Low savings, sir. Monitor closely.";
+    status = "Warning: Low savings. Monitor closely.";
     statusColor = T.red;
   } else if (parseFloat(savingsRate) < 40) {
-    status = "Systems stable, boss. Keep an eye on spending.";
+    status = "Systems stable. Keep an eye on spending.";
     statusColor = T.yellow;
   }
+
+  const displayName = userName ? userName.charAt(0).toUpperCase() + userName.slice(1) : "there";
 
   let context = "";
   if (urgent.length > 0) context = `${urgent[0].label} due in ${urgent[0].days}d. `;
   if (timedReminders.length > 0) context += `${timedReminders.length} lending reminder${timedReminders.length > 1 ? "s" : ""}. `;
-  context += `${paidCount}/${totalActions} actions done.`;
 
   return (
     <GC
@@ -55,7 +52,7 @@ export function Greeting({ config, expenses, payments, lending }) {
       <div style={{ fontSize: 20, fontWeight: 700, color: T.text, marginTop: 8 }}>
         {timeGreeting},{" "}
         <span style={{ background: T.grad1, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-          boss
+          {displayName}
         </span>
         .
       </div>

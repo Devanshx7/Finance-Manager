@@ -2,9 +2,10 @@ import { useState } from "react";
 import {
   LayoutDashboard, TrendingUp, HandCoins, Calculator, Settings,
   Receipt, Activity, FolderOpen, Users, Wallet, ChevronLeft, ChevronRight,
-  LogOut,
+  LogOut, Eye, EyeOff,
 } from "lucide-react";
 import { T, APP_NAME } from "./config/theme";
+import { useAuth } from "./hooks/useAuth";
 import { useStore } from "./hooks/useStore";
 import Onboarding from "./pages/Onboarding";
 import Dashboard from "./pages/Dashboard";
@@ -29,15 +30,26 @@ const navItems = [
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
-// ── NAME LOGIN SCREEN ──
-function NameLogin({ onLogin }) {
+// ── AUTH SCREEN ──
+function AuthScreen({ onAuth }) {
+  const { login, signup, loading, error, setError } = useAuth();
+  const [mode, setMode] = useState("login");
   const [name, setName] = useState("");
+  const [pin, setPin] = useState("");
+  const [showPin, setShowPin] = useState(false);
 
-  const handleSubmit = () => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    localStorage.setItem("vault:current_user", trimmed.toLowerCase());
-    onLogin(trimmed.toLowerCase());
+  const handleSubmit = async () => {
+    const success = mode === "login" ? await login(name, pin) : await signup(name, pin);
+    if (success) {
+      const userId = localStorage.getItem("vault:user_id");
+      const userName = localStorage.getItem("vault:user_name");
+      onAuth({ id: userId, name: userName });
+    }
+  };
+
+  const switchMode = () => {
+    setMode((m) => (m === "login" ? "signup" : "login"));
+    setError(null);
   };
 
   return (
@@ -58,14 +70,13 @@ function NameLogin({ onLogin }) {
           {APP_NAME}
         </h1>
         <p style={{ fontSize: 13, color: T.textSec, margin: "0 0 36px" }}>
-          Financial HQ — Who's logging in?
+          {mode === "login" ? "Welcome back. Enter your credentials." : "Create your Vault account."}
         </p>
 
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-          placeholder="Enter your name, boss"
+          placeholder="Your name"
           style={{
             width: "100%", padding: "16px 20px", background: "rgba(255,255,255,.04)",
             border: `1px solid ${T.border}`, borderRadius: 14, color: T.text,
@@ -74,20 +85,87 @@ function NameLogin({ onLogin }) {
           }}
         />
 
+        <div style={{ position: "relative", marginTop: 12 }}>
+          <input
+            value={pin}
+            onChange={(e) => {
+              const v = e.target.value.replace(/\D/g, "").slice(0, 4);
+              setPin(v);
+            }}
+            onKeyDown={(e) => e.key === "Enter" && pin.length === 4 && handleSubmit()}
+            placeholder="4-digit PIN"
+            type={showPin ? "text" : "password"}
+            inputMode="numeric"
+            maxLength={4}
+            style={{
+              width: "100%", padding: "16px 50px 16px 20px", background: "rgba(255,255,255,.04)",
+              border: `1px solid ${T.border}`, borderRadius: 14, color: T.text,
+              fontSize: 24, outline: "none", boxSizing: "border-box",
+              fontFamily: "'JetBrains Mono'", textAlign: "center", fontWeight: 600,
+              letterSpacing: "8px",
+            }}
+          />
+          <button
+            onClick={() => setShowPin(!showPin)}
+            style={{
+              position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)",
+              background: "none", border: "none", cursor: "pointer", color: T.textMut,
+              display: "flex", padding: 4,
+            }}
+          >
+            {showPin ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        </div>
+
+        {/* PIN dots indicator */}
+        <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 12 }}>
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} style={{
+              width: 10, height: 10, borderRadius: "50%",
+              background: pin.length > i ? T.accent : "rgba(255,255,255,.08)",
+              border: `1px solid ${pin.length > i ? T.accent + "66" : T.border}`,
+              transition: "all .2s",
+            }} />
+          ))}
+        </div>
+
+        {error && (
+          <div style={{
+            marginTop: 14, padding: "10px 16px", background: T.red + "12",
+            border: `1px solid ${T.red}33`, borderRadius: 10,
+            color: T.red, fontSize: 12, fontWeight: 600,
+          }}>
+            {error}
+          </div>
+        )}
+
         <button
           onClick={handleSubmit}
+          disabled={loading || !name.trim() || pin.length !== 4}
           style={{
             width: "100%", padding: "14px 20px", background: T.grad1,
             border: "none", borderRadius: 12, color: "#030507", fontSize: 14,
             fontWeight: 700, cursor: "pointer", marginTop: 16,
-            fontFamily: "'DM Sans'", opacity: name.trim() ? 1 : 0.4, transition: "opacity .3s",
+            fontFamily: "'DM Sans'",
+            opacity: !loading && name.trim() && pin.length === 4 ? 1 : 0.4,
+            transition: "opacity .3s",
           }}
         >
-          Enter Vault
+          {loading ? "..." : mode === "login" ? "Enter Vault" : "Create Account"}
+        </button>
+
+        <button
+          onClick={switchMode}
+          style={{
+            background: "none", border: "none", color: T.accent, fontSize: 12,
+            cursor: "pointer", marginTop: 16, fontFamily: "'DM Sans'", fontWeight: 600,
+          }}
+        >
+          {mode === "login" ? "Don't have an account? Sign up" : "Already have an account? Log in"}
         </button>
 
         <p style={{ fontSize: 10, color: T.textMut, marginTop: 20 }}>
-          Each name gets its own data. Switch anytime.
+          Secured with a 4-digit PIN. Each account has isolated data.
         </p>
       </div>
     </div>
@@ -95,22 +173,21 @@ function NameLogin({ onLogin }) {
 }
 
 // ── MAIN APP ──
-function MainApp({ userName, onLogout }) {
+function MainApp({ user, onLogout }) {
   const [page, setPage] = useState("dashboard");
-  const prefix = `vault:${userName}`;
+  const userName = user.name;
 
-  const [config, updateConfig, cl] = useStore(`${prefix}:config`, null);
-  const [expenses, updateExpenses, el] = useStore(`${prefix}:expenses`, []);
-  const [lending, updateLending, ll] = useStore(`${prefix}:lending`, []);
-  const [crowdfunding, updateCF, cfl] = useStore(`${prefix}:cf`, []);
-  const [payments, updatePayments] = useStore(`${prefix}:payments`, {});
-  const [history, updateHistory] = useStore(`${prefix}:history`, []);
-  const [splits, updateSplits] = useStore(`${prefix}:splits`, { people: [], transactions: [] });
-  const [assignments, updateAssignments] = useStore(`${prefix}:assignments`, []);
+  const [config, updateConfig, cl] = useStore("config", null);
+  const [expenses, updateExpenses, el] = useStore("expenses", []);
+  const [lending, updateLending, ll] = useStore("lending", []);
+  const [payments, updatePayments] = useStore("payments", {});
+  const [history, updateHistory] = useStore("history", []);
+  const [splits, updateSplits] = useStore("splits", { people: [], transactions: [] });
+  const [assignments, updateAssignments] = useStore("assignments", []);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [sb, setSb] = useState(true);
 
-  const loaded = cl && el && ll && cfl;
+  const loaded = cl && el && ll;
 
   const handleComplete = (cfg, lend) => {
     updateConfig(cfg);
@@ -119,7 +196,8 @@ function MainApp({ userName, onLogout }) {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("vault:current_user");
+    localStorage.removeItem("vault:user_id");
+    localStorage.removeItem("vault:user_name");
     onLogout();
   };
 
@@ -143,11 +221,11 @@ function MainApp({ userName, onLogout }) {
   const renderPage = () => {
     switch (page) {
       case "dashboard":
-        return <Dashboard config={config} updateConfig={updateConfig} expenses={expenses} updateExpenses={updateExpenses} payments={payments} updatePayments={updatePayments} lending={lending} history={history} updateHistory={updateHistory} onSetup={() => setShowOnboarding(true)} userName={userName} />;
+        return <Dashboard config={config} expenses={expenses} updateExpenses={updateExpenses} payments={payments} updatePayments={updatePayments} lending={lending} history={history} updateHistory={updateHistory} onSetup={() => setShowOnboarding(true)} userName={userName} />;
       case "expenses":
-        return <Expenses config={config} expenses={expenses} updateExpenses={updateExpenses} />;
+        return <Expenses config={config} expenses={expenses} updateExpenses={updateExpenses} history={history} />;
       case "investments":
-        return <Investments config={config} updateConfig={updateConfig} crowdfunding={crowdfunding} updateCF={updateCF} />;
+        return <Investments config={config} updateConfig={updateConfig} />;
       case "lending":
         return <Lending config={config} lending={lending} updateLending={updateLending} />;
       case "split":
@@ -164,6 +242,8 @@ function MainApp({ userName, onLogout }) {
         return null;
     }
   };
+
+  const displayName = userName.charAt(0).toUpperCase() + userName.slice(1);
 
   return (
     <div style={{ display: "flex", height: "100vh", background: T.bg, fontFamily: "'DM Sans',sans-serif", color: T.text, overflow: "hidden" }}>
@@ -197,12 +277,12 @@ function MainApp({ userName, onLogout }) {
             }}>
               {userName[0]}
             </div>
-            {sb && <span style={{ fontSize: 12, color: T.text, fontWeight: 600, textTransform: "capitalize" }}>{userName}</span>}
+            {sb && <span style={{ fontSize: 12, color: T.text, fontWeight: 600 }}>{displayName}</span>}
           </div>
           {sb && (
             <button
               onClick={handleLogout}
-              title="Switch user"
+              title="Logout"
               style={{
                 background: "rgba(255,255,255,.04)", border: `1px solid ${T.border}`,
                 borderRadius: 7, padding: 5, cursor: "pointer", color: T.textMut,
@@ -259,12 +339,14 @@ function MainApp({ userName, onLogout }) {
 // ── ROOT ──
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => {
-    return localStorage.getItem("vault:current_user") || null;
+    const id = localStorage.getItem("vault:user_id");
+    const name = localStorage.getItem("vault:user_name");
+    return id && name ? { id, name } : null;
   });
 
   if (!currentUser) {
-    return <NameLogin onLogin={setCurrentUser} />;
+    return <AuthScreen onAuth={setCurrentUser} />;
   }
 
-  return <MainApp userName={currentUser} onLogout={() => setCurrentUser(null)} />;
+  return <MainApp user={currentUser} onLogout={() => setCurrentUser(null)} />;
 }

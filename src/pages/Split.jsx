@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Users, Plus, X, Trash2 } from "lucide-react";
+import { Users, Plus, X, Trash2, Check } from "lucide-react";
 import { T, fmt } from "../config/theme";
 import { GC, Modal, Inp, Btn } from "../components/ui";
 
@@ -19,26 +19,74 @@ export default function SplitPage({ splits, updateSplits }) {
     setShowPerson(false);
   };
 
+  // Get available people for "Split With" based on who paid
+  const getSplitOptions = () => {
+    if (form.paidBy === "me") {
+      return people; // I paid — split with any of the added people
+    }
+    // Someone else paid — split with "Me" + everyone except the payer
+    return ["Me", ...people.filter((p) => p !== form.paidBy)];
+  };
+
+  const handlePayerChange = (v) => {
+    setForm((f) => ({ ...f, paidBy: v, splitWith: [] })); // Reset splitWith when payer changes
+  };
+
+  const toggleSplitWith = (p) => {
+    setForm((f) => ({
+      ...f,
+      splitWith: f.splitWith.includes(p)
+        ? f.splitWith.filter((x) => x !== p)
+        : [...f.splitWith, p],
+    }));
+  };
+
   const addTxn = () => {
     if (!form.desc || !form.amount || form.splitWith.length === 0) return;
-    const t = { id: Date.now(), desc: form.desc, amount: parseFloat(form.amount), paidBy: form.paidBy, splitWith: ["me", ...form.splitWith], date: form.date };
+    // splitWith includes the selected people. The payer is implicitly part of the split.
+    // Total split count = splitWith.length + 1 (payer + selected people)
+    const payer = form.paidBy;
+    const t = {
+      id: Date.now(),
+      desc: form.desc,
+      amount: parseFloat(form.amount),
+      paidBy: payer,
+      splitWith: form.splitWith, // just the people selected (NOT the payer)
+      date: form.date,
+    };
     updateSplits((p) => ({ ...p, transactions: [...(p.transactions || []), t] }));
     setForm({ desc: "", amount: "", paidBy: "me", splitWith: [], date: new Date().toISOString().split("T")[0] });
     setShowAdd(false);
   };
 
-  const toggleSplitWith = (p) => setForm((f) => ({ ...f, splitWith: f.splitWith.includes(p) ? f.splitWith.filter((x) => x !== p) : [...f.splitWith, p] }));
-
-  // Calculate balances
+  // Calculate balances: positive = they owe me, negative = I owe them
   const balances = {};
   people.forEach((p) => { balances[p] = 0; });
+
   txns.forEach((tx) => {
-    const share = tx.amount / tx.splitWith.length;
-    tx.splitWith.forEach((person) => {
-      if (person === tx.paidBy) return;
-      if (tx.paidBy === "me") balances[person] = (balances[person] || 0) + share;
-      else if (person === "me") balances[tx.paidBy] = (balances[tx.paidBy] || 0) - share;
-    });
+    const totalPeople = tx.splitWith.length + 1; // payer + selected people
+    const share = tx.amount / totalPeople;
+
+    if (tx.paidBy === "me") {
+      // I paid — each person in splitWith owes me their share
+      tx.splitWith.forEach((person) => {
+        if (person !== "Me") {
+          balances[person] = (balances[person] || 0) + share;
+        }
+      });
+    } else {
+      // Someone else paid
+      tx.splitWith.forEach((person) => {
+        if (person === "Me") {
+          // I owe the payer my share
+          balances[tx.paidBy] = (balances[tx.paidBy] || 0) - share;
+        } else if (person !== tx.paidBy) {
+          // This third person owes the payer — doesn't affect my balance with them directly
+          // But if paidBy is someone else and "Me" is in splitWith, I owe payer
+        }
+      });
+      // If "Me" is NOT in splitWith, I'm not involved in this bill at all (no balance change for me)
+    }
   });
 
   const theyOweMe = Object.entries(balances).filter(([, v]) => v > 0);
@@ -55,14 +103,14 @@ export default function SplitPage({ splits, updateSplits }) {
       </div>
 
       {people.length === 0 ? (
-        <GC><div style={{ padding: 30, textAlign: "center", color: T.textMut, fontSize: 13 }}>Add your roommates or friends first, boss.</div></GC>
+        <GC><div style={{ padding: 30, textAlign: "center", color: T.textMut, fontSize: 13 }}>Add your roommates or friends first.</div></GC>
       ) : (
         <>
           {/* BALANCE SUMMARY */}
           <div style={{ display: "flex", gap: 14, marginBottom: 20, flexWrap: "wrap" }}>
             {theyOweMe.length > 0 && (
               <GC style={{ flex: "1 1 300px" }} delay={0.04}>
-                <h3 style={{ color: T.accent, fontSize: 12, fontWeight: 700, margin: "0 0 14px", letterSpacing: "1px" }}>THEY OWE YOU, BOSS</h3>
+                <h3 style={{ color: T.accent, fontSize: 12, fontWeight: 700, margin: "0 0 14px", letterSpacing: "1px" }}>THEY OWE YOU</h3>
                 {theyOweMe.map(([name, amt]) => (
                   <div key={name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${T.border}` }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -77,7 +125,7 @@ export default function SplitPage({ splits, updateSplits }) {
 
             {iOweThem.length > 0 && (
               <GC style={{ flex: "1 1 300px" }} delay={0.08}>
-                <h3 style={{ color: T.red, fontSize: 12, fontWeight: 700, margin: "0 0 14px", letterSpacing: "1px" }}>YOU OWE, SIR</h3>
+                <h3 style={{ color: T.red, fontSize: 12, fontWeight: 700, margin: "0 0 14px", letterSpacing: "1px" }}>YOU OWE</h3>
                 {iOweThem.map(([name, amt]) => (
                   <div key={name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${T.border}` }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -91,7 +139,7 @@ export default function SplitPage({ splits, updateSplits }) {
             )}
 
             {theyOweMe.length === 0 && iOweThem.length === 0 && (
-              <GC style={{ flex: 1 }}><div style={{ padding: 20, textAlign: "center", color: T.textMut, fontSize: 12 }}>All settled, boss. No pending splits.</div></GC>
+              <GC style={{ flex: 1 }}><div style={{ padding: 20, textAlign: "center", color: T.textMut, fontSize: 12 }}>All settled. No pending splits.</div></GC>
             )}
           </div>
 
@@ -118,7 +166,7 @@ export default function SplitPage({ splits, updateSplits }) {
                 <div key={tx.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: `1px solid ${T.border}` }}>
                   <div>
                     <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{tx.desc}</div>
-                    <div style={{ fontSize: 10, color: T.textMut }}>Paid by {tx.paidBy === "me" ? "you" : tx.paidBy} · Split {tx.splitWith.length} ways · {tx.date}</div>
+                    <div style={{ fontSize: 10, color: T.textMut }}>Paid by {tx.paidBy === "me" ? "you" : tx.paidBy} · Split {tx.splitWith.length + 1} ways · {tx.date}</div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: T.orange, fontFamily: "'JetBrains Mono'" }}>{fmt(tx.amount)}</span>
@@ -141,22 +189,27 @@ export default function SplitPage({ splits, updateSplits }) {
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Split a Bill">
         <Inp label="What" value={form.desc} onChange={(v) => setForm((p) => ({ ...p, desc: v }))} placeholder="WiFi, dinner, etc" />
         <Inp label="Total Amount ($)" value={form.amount} onChange={(v) => setForm((p) => ({ ...p, amount: v }))} type="number" />
-        <Inp label="Who Paid?" value={form.paidBy} onChange={(v) => setForm((p) => ({ ...p, paidBy: v }))} options={[{ value: "me", label: "Me" }, ...people.map((p) => ({ value: p, label: p }))]} />
+        <Inp label="Who Paid?" value={form.paidBy} onChange={handlePayerChange} options={[{ value: "me", label: "Me" }, ...people.map((p) => ({ value: p, label: p }))]} />
 
         <div style={{ marginBottom: 14 }}>
           <label style={{ display: "block", fontSize: 10, color: T.textSec, marginBottom: 8, fontWeight: 600, letterSpacing: "1px", textTransform: "uppercase" }}>Split With</label>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {people.map((p) => (
-              <button key={p} onClick={() => toggleSplitWith(p)} style={{
-                padding: "8px 16px", borderRadius: 9,
-                border: `1px solid ${form.splitWith.includes(p) ? T.accent + "55" : T.border}`,
-                background: form.splitWith.includes(p) ? T.accent + "14" : "rgba(255,255,255,.03)",
-                color: form.splitWith.includes(p) ? T.accent : T.textSec,
-                fontSize: 12, cursor: "pointer", fontWeight: 500, fontFamily: "'DM Sans'",
-              }}>
-                {p}{form.splitWith.includes(p) && " ✓"}
-              </button>
-            ))}
+            {getSplitOptions().map((p) => {
+              const selected = form.splitWith.includes(p);
+              return (
+                <button key={p} onClick={() => toggleSplitWith(p)} style={{
+                  padding: "8px 16px", borderRadius: 9,
+                  border: `1px solid ${selected ? T.accent : T.border}`,
+                  background: selected ? T.accent + "22" : "rgba(255,255,255,.03)",
+                  color: selected ? T.accent : T.textSec,
+                  fontSize: 12, cursor: "pointer", fontWeight: selected ? 700 : 500, fontFamily: "'DM Sans'",
+                  display: "flex", alignItems: "center", gap: 6, transition: "all .2s",
+                }}>
+                  {selected && <Check size={12} />}
+                  {p}
+                </button>
+              );
+            })}
           </div>
         </div>
 

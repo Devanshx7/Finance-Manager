@@ -249,9 +249,9 @@ export default function Expenses({ config, expenses, updateExpenses, history }) 
       </GC>
 
       {/* CUMULATIVE SPENDING CHART */}
-      {monthExpenses.length > 0 && (
-        <GC delay={0.16}>
-          <h3 style={{ color: T.text, fontSize: 13, fontWeight: 600, margin: "0 0 14px" }}>Cumulative Spending</h3>
+      <GC delay={0.16}>
+        <h3 style={{ color: T.text, fontSize: 13, fontWeight: 600, margin: "0 0 14px" }}>Spending Trend</h3>
+        {monthExpenses.length > 0 ? (
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={cumulativeData}>
               <defs>
@@ -271,8 +271,13 @@ export default function Expenses({ config, expenses, updateExpenses, history }) 
               <Area type="monotone" dataKey="total" stroke={T.accent} strokeWidth={2} fill="url(#spendGrad)" />
             </AreaChart>
           </ResponsiveContainer>
-        </GC>
-      )}
+        ) : (
+          <div style={{ padding: 30, textAlign: "center", color: T.textMut, fontSize: 12 }}>
+            <Receipt size={24} color={T.textMut} style={{ margin: "0 auto 8px", display: "block" }} />
+            Add expenses to see your spending trend
+          </div>
+        )}
+      </GC>
 
       {/* ADD MODAL */}
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Quick Add">

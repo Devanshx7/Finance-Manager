@@ -3,10 +3,11 @@ import { X } from "lucide-react";
 import { T } from "../config/theme";
 
 // ── Glass Card ──
-export function GC({ children, style, delay = 0, hover = true }) {
+export function GC({ children, style, delay = 0, hover = true, onClick }) {
   return (
     <div
       className={`glass ${hover ? "c3d" : ""}`}
+      onClick={onClick}
       style={{
         borderRadius: 16,
         padding: 22,

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { TrendingUp, Plus, Trash2, Edit3, Check } from "lucide-react";
 import { T, fmt, toUSD } from "../config/theme";
 import { GC, Metric, Modal, Inp, Btn } from "../components/ui";
@@ -63,8 +63,32 @@ export default function Investments({ config, updateConfig }) {
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
 
-  const investments = config.investments || [];
   const rate = config.exchangeRate || 93.5;
+
+  // One-time migration: if config.investments doesn't exist but sips/stocks do, create it
+  useEffect(() => {
+    if (config && !config.investments && ((config.sips && config.sips.length > 0) || (config.stocks && config.stocks.length > 0))) {
+      const migrated = [
+        ...(config.sips || []).map((s) => ({
+          id: s.id || `sip-${Date.now()}-${Math.random()}`,
+          name: s.name,
+          type: "SIP",
+          monthlyAmount: s.amountINR || 0,
+          debitDate: s.date || 1,
+        })),
+        ...(config.stocks || []).map((s) => ({
+          id: s.id || `st-${Date.now()}-${Math.random()}`,
+          name: s.name,
+          type: "Stock",
+          quantity: s.qty || 0,
+          buyPrice: s.buyPrice || 0,
+        })),
+      ];
+      updateConfig((prev) => ({ ...prev, investments: migrated }));
+    }
+  }, [config, updateConfig]);
+
+  const investments = config.investments || [];
 
   // Totals
   const monthlyTotal = investments
@@ -100,6 +124,17 @@ export default function Investments({ config, updateConfig }) {
     setShowAdd(true);
   };
 
+  // Sync config.sips and config.stocks from investments array
+  const syncLegacy = (newInvestments) => {
+    const newSips = newInvestments
+      .filter((i) => i.type === "SIP")
+      .map((i) => ({ id: i.id, name: i.name, amountINR: i.monthlyAmount || 0, date: i.debitDate || 1 }));
+    const newStocks = newInvestments
+      .filter((i) => i.type === "Stock" || i.type === "ETF")
+      .map((i) => ({ id: i.id, name: i.name, qty: i.quantity || 0, buyPrice: i.buyPrice || 0 }));
+    return { sips: newSips, stocks: newStocks };
+  };
+
   const save = () => {
     if (!form.name) return;
 
@@ -123,10 +158,11 @@ export default function Investments({ config, updateConfig }) {
 
     updateConfig((p) => {
       const prev = p.investments || [];
-      if (editId) {
-        return { ...p, investments: prev.map((i) => (i.id === editId ? entry : i)) };
-      }
-      return { ...p, investments: [...prev, entry] };
+      const newInvestments = editId
+        ? prev.map((i) => (i.id === editId ? entry : i))
+        : [...prev, entry];
+      const { sips, stocks } = syncLegacy(newInvestments);
+      return { ...p, investments: newInvestments, sips, stocks };
     });
 
     setForm({ ...EMPTY_FORM });
@@ -135,7 +171,11 @@ export default function Investments({ config, updateConfig }) {
   };
 
   const remove = (id) => {
-    updateConfig((p) => ({ ...p, investments: (p.investments || []).filter((i) => i.id !== id) }));
+    updateConfig((p) => {
+      const newInvestments = (p.investments || []).filter((i) => i.id !== id);
+      const { sips, stocks } = syncLegacy(newInvestments);
+      return { ...p, investments: newInvestments, sips, stocks };
+    });
   };
 
   return (

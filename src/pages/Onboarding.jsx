@@ -34,13 +34,35 @@ export default function Onboarding({ onComplete }) {
   };
 
   const finish = () => {
+    const sips = cfg.sips.filter((s) => s.name).map((s) => ({ ...s, amountINR: parseFloat(s.amountINR) || 0, date: parseInt(s.date) || 1 }));
+    const stocks = cfg.stocks.filter((s) => s.name).map((s) => ({ ...s, qty: parseFloat(s.qty) || 0, buyPrice: parseFloat(s.buyPrice) || 0 }));
+
+    // Build unified investments array from sips + stocks
+    const investments = [
+      ...sips.map((s) => ({
+        id: s.id,
+        name: s.name,
+        type: "SIP",
+        monthlyAmount: s.amountINR,
+        debitDate: s.date,
+      })),
+      ...stocks.map((s) => ({
+        id: s.id,
+        name: s.name,
+        type: "Stock",
+        quantity: s.qty,
+        buyPrice: s.buyPrice,
+      })),
+    ];
+
     const finalCfg = {
       salary: parseFloat(cfg.salary) || 0,
       rent: parseFloat(cfg.rent) || 0,
       exchangeRate: parseFloat(cfg.exchangeRate) || 83.5,
       cards: cfg.cards.filter((c) => c.name).map((c) => ({ ...c, dueDate: parseInt(c.dueDate) || 1 })),
-      sips: cfg.sips.filter((s) => s.name).map((s) => ({ ...s, amountINR: parseFloat(s.amountINR) || 0, date: parseInt(s.date) || 1 })),
-      stocks: cfg.stocks.filter((s) => s.name).map((s) => ({ ...s, qty: parseFloat(s.qty) || 0, buyPrice: parseFloat(s.buyPrice) || 0 })),
+      sips,
+      stocks,
+      investments,
       studentLoan: {
         amountINR: parseFloat(cfg.studentLoan.amountINR) || 0,
         date: parseInt(cfg.studentLoan.date) || 1,
@@ -56,6 +78,7 @@ export default function Onboarding({ onComplete }) {
   const skipSetup = () => {
     onComplete({
       salary: 0, rent: 0, exchangeRate: 83.5, cards: [], sips: [], stocks: [],
+      investments: [],
       studentLoan: { amountINR: 0, date: 1, totalRemaining: 0 },
       subscriptions: [], customBudget: [],
     }, []);
